@@ -359,9 +359,6 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## 📞 Support
 
-- 📧 Email: support@aivideoprocessing.com
-- 💬 Discord: [Join our community](https://discord.gg/aivideoprocessing)
-- 📖 Documentation: [docs.aivideoprocessing.com](https://docs.aivideoprocessing.com)
 - 🐛 Issues: [GitHub Issues](https://github.com/yourusername/ai-video-processing/issues)
 
 ---
