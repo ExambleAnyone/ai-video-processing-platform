@@ -1,0 +1,65 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: video-processing-app
+  labels:
+    app: video-processing
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: video-processing
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        app: video-processing
+    spec:
+      containers:
+      - name: video-processing
+        image: video-processing:latest
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 3000
+        resources:
+          requests:
+            cpu: "500m"
+            memory: "512Mi"
+          limits:
+            cpu: "2000m"
+            memory: "2Gi"
+        env:
+        - name: NODE_ENV
+          value: "production"
+        - name: GPT4_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: gpt-api-secrets
+              key: gpt4-api-key
+        - name: GPT35_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: gpt-api-secrets
+              key: gpt35-api-key
+        volumeMounts:
+        - name: temp-storage
+          mountPath: /tmp/video-processing
+        livenessProbe:
+          httpGet:
+            path: /api/health
+            port: 3000
+          initialDelaySeconds: 30
+          periodSeconds: 30
+        readinessProbe:
+          httpGet:
+            path: /api/health
+            port: 3000
+          initialDelaySeconds: 5
+          periodSeconds: 10
+      volumes:
+      - name: temp-storage
+        emptyDir: {}

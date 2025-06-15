@@ -1,0 +1,37 @@
+version: '3.8'
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: development
+    ports:
+      - "8000:8000"
+    volumes:
+      - .:/app
+      - /app/node_modules
+      - /app/.next
+    environment:
+      - NODE_ENV=development
+      - NEXT_PUBLIC_APP_URL=http://localhost:8000
+    env_file:
+      - .env.local
+    command: npm run dev
+    networks:
+      - app-network
+
+  # FFmpeg service for video processing
+  ffmpeg:
+    image: jrottenberg/ffmpeg:4.4-alpine
+    volumes:
+      - ./uploads:/uploads
+    networks:
+      - app-network
+
+networks:
+  app-network:
+    driver: bridge
+
+volumes:
+  uploads:

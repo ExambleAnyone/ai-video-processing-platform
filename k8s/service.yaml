@@ -1,0 +1,51 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: video-processing-service
+  labels:
+    app: video-processing
+spec:
+  type: LoadBalancer
+  ports:
+    - port: 80
+      targetPort: 3000
+      protocol: TCP
+      name: http
+  selector:
+    app: video-processing
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: gpt-api-secrets
+type: Opaque
+data:
+  # These values should be base64 encoded in production
+  gpt4-api-key: ${GPT4_API_KEY}
+  gpt35-api-key: ${GPT35_API_KEY}
+  gpt4-backup-api-key: ${GPT4_BACKUP_API_KEY}
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: video-processing-hpa
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: video-processing-app
+  minReplicas: 2
+  maxReplicas: 10
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80

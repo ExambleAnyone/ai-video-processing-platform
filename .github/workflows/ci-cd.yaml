@@ -1,0 +1,140 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v3
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v3
+      with:
+        node-version: '18'
+        cache: 'npm'
+
+    - name: Install dependencies
+      run: npm ci
+
+    - name: Run linting
+      run: npm run lint
+
+    - name: Run type checking
+      run: npm run type-check
+
+    - name: Run tests
+      run: npm test
+
+    - name: Build application
+      run: npm run build
+
+  docker-build-and-push:
+    needs: build-and-test
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v3
+
+    - name: Log in to the Container registry
+      uses: docker/login-action@v2
+      with:
+        registry: ${{ env.REGISTRY }}
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Extract metadata for Docker
+      id: meta
+      uses: docker/metadata-action@v4
+      with:
+        images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+        tags: |
+          type=sha,format=long
+          type=ref,event=branch
+          type=ref,event=tag
+
+    - name: Build and push Docker image
+      uses: docker/build-push-action@v4
+      with:
+        context: .
+        push: true
+        tags: ${{ steps.meta.outputs.tags }}
+        labels: ${{ steps.meta.outputs.labels }}
+
+  deploy:
+    needs: docker-build-and-push
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    environment: production
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v3
+
+    - name: Install kubectl
+      uses: azure/setup-kubectl@v3
+      with:
+        version: 'latest'
+
+    - name: Configure kubectl
+      run: |
+        echo "${{ secrets.KUBE_CONFIG }}" > kubeconfig.yaml
+        chmod 600 kubeconfig.yaml
+        export KUBECONFIG=kubeconfig.yaml
+
+    - name: Update deployment secrets
+      run: |
+        kubectl create secret generic gpt-api-secrets \
+          --from-literal=gpt4-api-key=${{ secrets.GPT4_API_KEY }} \
+          --from-literal=gpt35-api-key=${{ secrets.GPT35_API_KEY }} \
+          --from-literal=gpt4-backup-api-key=${{ secrets.GPT4_BACKUP_API_KEY }} \
+          --dry-run=client -o yaml | kubectl apply -f -
+
+    - name: Deploy to Kubernetes
+      run: |
+        # Update image tag in deployment
+        kubectl set image deployment/video-processing-app \
+          video-processing=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:sha-${{ github.sha }}
+
+        # Wait for rollout to complete
+        kubectl rollout status deployment/video-processing-app --timeout=300s
+
+    - name: Clean up
+      if: always()
+      run: rm -f kubeconfig.yaml
+
+  notify:
+    needs: [deploy]
+    runs-on: ubuntu-latest
+    if: always()
+
+    steps:
+    - name: Notify deployment status
+      uses: slackapi/slack-github-action@v1.24.0
+      with:
+        channel-id: 'deployments'
+        slack-message: |
+          Deployment Status: ${{ needs.deploy.result }}
+          Repository: ${{ github.repository }}
+          Commit: ${{ github.sha }}
+          Workflow: ${{ github.workflow }}
+      env:
+        SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
